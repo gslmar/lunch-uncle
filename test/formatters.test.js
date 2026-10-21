@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   CT_HUB_2,
+  buildPlacesRequest,
   formatForecast,
   formatBusArrivals,
   formatPlaces,
@@ -67,6 +68,7 @@ test("formatPlaces measures from CT Hub 2 and reports open status", () => {
     },
     { displayName: { text: "No Hours" }, location: nextDoor },
   ];
+  assert.equal(formatPlaces([{ displayName: { text: "Nowhere" } }], CT_HUB_2)[0].distance_m, null);
 
   const formatted = formatPlaces(places, CT_HUB_2);
 
@@ -81,6 +83,13 @@ test("formatPlaces measures from CT Hub 2 and reports open status", () => {
   for (const place of formatted) {
     assert.ok(place.distance_m < 100, `got ${place.distance_m}`);
   }
+});
+
+test("buildPlacesRequest centres the search on CT Hub 2", () => {
+  const body = buildPlacesRequest("chicken rice", true);
+  assert.deepEqual(body.locationBias.circle.center, CT_HUB_2);
+  assert.equal(body.textQuery, "chicken rice");
+  assert.equal(body.openNow, true);
 });
 
 test("haversineMetres measures CT Hub 2 to Lavender MRT at under 600 m", () => {
