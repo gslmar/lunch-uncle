@@ -1,10 +1,42 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  CT_HUB_2,
+  formatPlaces,
   formatForecast,
   formatBusArrivals,
   haversineMetres,
 } from "../src/tools.js";
+
+test("formatPlaces measures from CT Hub 2 and keeps open_now", () => {
+  const nextDoor = { latitude: 1.3117, longitude: 103.8616 };
+  const places = [
+    {
+      displayName: { text: "Open Stall" },
+      rating: 4.2,
+      location: nextDoor,
+      currentOpeningHours: { openNow: true },
+    },
+    {
+      displayName: { text: "Closed Stall" },
+      location: nextDoor,
+      currentOpeningHours: { openNow: false },
+    },
+    { displayName: { text: "No Hours Stall" }, location: nextDoor },
+  ];
+
+  const result = formatPlaces(places, CT_HUB_2);
+
+  for (const place of result) {
+    assert.ok(place.distance_m < 50, `got ${place.distance_m}`);
+  }
+  assert.deepEqual(
+    result.map((p) => p.open_now),
+    [true, false, null],
+  );
+  assert.equal(result[0].rating, 4.2);
+  assert.equal(result[1].rating, null);
+});
 
 test("formatForecast picks the requested area", () => {
   const payload = {
