@@ -17,22 +17,24 @@ const NO_PLACES_NOTE =
  * history is the prior conversation as OpenAI-style {role, content} messages.
  */
 export async function runLoop(history, message, env) {
-  const messages = [
-    { role: "system", content: buildSystemPrompt() },
-    ...history,
-    { role: "user", content: message },
-  ];
-
   // Without a Places key Uncle cannot search for food, but rain and bus
   // still work, so drop only that tool instead of faking a recommendation.
+  let systemPrompt = buildSystemPrompt();
   let tools = toolDefinitions;
   if (!env.GOOGLE_PLACES_API_KEY) {
     console.warn("GOOGLE_PLACES_API_KEY is not set; find_lunch_places disabled");
     tools = toolDefinitions.filter(
       (t) => t.function.name !== "find_lunch_places",
     );
-    messages.splice(1, 0, { role: "system", content: NO_PLACES_NOTE });
+    systemPrompt += `\n\n${NO_PLACES_NOTE}`;
   }
+  const toolNames = new Set(tools.map((t) => t.function.name));
+
+  const messages = [
+    { role: "system", content: systemPrompt },
+    ...history,
+    { role: "user", content: message },
+  ];
 
   // One session id per turn, shared by every model call in this loop run,
   // so the OpenCode Go endpoint can route and cache consistently.
@@ -51,7 +53,10 @@ export async function runLoop(history, message, env) {
     for (const call of toolCalls) {
       const args = parseArgs(call.function.arguments);
       console.log(`round ${round}: ${call.function.name}`, args);
-      const result = await executeTool(call.function.name, args, env);
+      // Never run a tool the model was not offered this turn.
+      const result = toolNames.has(call.function.name)
+        ? await executeTool(call.function.name, args, env)
+        : JSON.stringify({ error: `Tool not available: ${call.function.name}` });
       messages.push({
         role: "tool",
         tool_call_id: call.id,

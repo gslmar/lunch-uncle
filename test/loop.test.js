@@ -56,9 +56,9 @@ test("runLoop stops after MAX_ROUNDS when the model keeps calling tools", async 
 });
 
 test("runLoop without a Places key drops only find_lunch_places", async () => {
-  let sentTools;
+  let sentBody;
   globalThis.fetch = async (_url, init) => {
-    sentTools = JSON.parse(init.body).tools.map((t) => t.function.name);
+    sentBody = JSON.parse(init.body);
     return Response.json({
       choices: [{ message: { role: "assistant", content: "Cannot check now lah." } }],
     });
@@ -69,5 +69,50 @@ test("runLoop without a Places key drops only find_lunch_places", async () => {
   });
 
   assert.equal(reply, "Cannot check now lah.");
-  assert.deepEqual(sentTools, ["get_rain_forecast", "get_bus_arrivals"]);
+  assert.deepEqual(
+    sentBody.tools.map((t) => t.function.name),
+    ["get_rain_forecast", "get_bus_arrivals"],
+  );
+  assert.match(sentBody.messages[0].content, /find_lunch_places is unavailable/);
+});
+
+test("runLoop refuses a tool call that was not offered", async () => {
+  const calls = [];
+  let modelCalls = 0;
+  globalThis.fetch = async (url, init) => {
+    calls.push(String(url));
+    modelCalls++;
+    if (modelCalls === 1) {
+      return Response.json({
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "call_1",
+                  type: "function",
+                  function: {
+                    name: "find_lunch_places",
+                    arguments: '{"query":"chicken rice"}',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+    }
+    const toolMessage = JSON.parse(init.body).messages.at(-1);
+    assert.match(toolMessage.content, /Tool not available/);
+    return Response.json({
+      choices: [{ message: { role: "assistant", content: "Cannot search now." } }],
+    });
+  };
+
+  const reply = await runLoop([], "chicken rice?", { OPENCODE_API_KEY: "test" });
+
+  assert.equal(reply, "Cannot search now.");
+  assert.ok(calls.every((u) => u.endsWith("/chat/completions")));
 });
