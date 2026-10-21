@@ -1,8 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  CT_HUB_2,
+  buildPlacesRequest,
   formatForecast,
   formatBusArrivals,
+  formatPlaces,
   haversineMetres,
 } from "../src/tools.js";
 
@@ -47,6 +50,46 @@ test("formatBusArrivals converts durations to whole minutes", () => {
       { service: "107M", next_min: 1, subsequent_min: null },
     ],
   });
+});
+
+test("formatPlaces measures from CT Hub 2 and reports open status", () => {
+  const nextDoor = { latitude: 1.3118, longitude: 103.8618 };
+  const places = [
+    {
+      displayName: { text: "Open Stall" },
+      rating: 4.2,
+      location: nextDoor,
+      currentOpeningHours: { openNow: true },
+    },
+    {
+      displayName: { text: "Closed Stall" },
+      location: nextDoor,
+      currentOpeningHours: { openNow: false },
+    },
+    { displayName: { text: "No Hours" }, location: nextDoor },
+  ];
+  assert.equal(formatPlaces([{ displayName: { text: "Nowhere" } }], CT_HUB_2)[0].distance_m, null);
+
+  const formatted = formatPlaces(places, CT_HUB_2);
+
+  assert.deepEqual(
+    formatted.map(({ name, rating, open_now }) => ({ name, rating, open_now })),
+    [
+      { name: "Open Stall", rating: 4.2, open_now: true },
+      { name: "Closed Stall", rating: null, open_now: false },
+      { name: "No Hours", rating: null, open_now: null },
+    ],
+  );
+  for (const place of formatted) {
+    assert.ok(place.distance_m < 100, `got ${place.distance_m}`);
+  }
+});
+
+test("buildPlacesRequest centres the search on CT Hub 2", () => {
+  const body = buildPlacesRequest("chicken rice", true);
+  assert.deepEqual(body.locationBias.circle.center, CT_HUB_2);
+  assert.equal(body.textQuery, "chicken rice");
+  assert.equal(body.openNow, true);
 });
 
 test("haversineMetres measures CT Hub 2 to Lavender MRT at under 600 m", () => {
